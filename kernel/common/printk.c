@@ -121,7 +121,6 @@ static int printk_write_num(char **out, long long i, int base, int sign,
 	// 2. the format is only decided by `base` and `letbase` here
 	s = print_buf + PRINT_BUF_LEN;
 	*--s = '\0';
-	int num = PRINT_BUF_LEN-1;
 	while(u > 0){
   	t = u % base;
   	if(t < 10){

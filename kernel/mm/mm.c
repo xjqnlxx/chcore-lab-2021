@@ -16,6 +16,8 @@
 
 #include "buddy.h"
 #include "slab.h"
+#include "page_table.h"
+
 
 extern unsigned long *img_end;
 
@@ -25,6 +27,11 @@ extern unsigned long *img_end;
 #define NPAGES (128*1000)
 
 #define PHYSICAL_MEM_END (PHYSICAL_MEM_START+NPAGES*BUDDY_PAGE_SIZE)
+
+#define BLOCK_SIZE (L2_PER_ENTRY_PAGES*PAGE_SHIFT)
+
+extern int get_next_ptp(ptp_t * cur_ptp, u32 level, vaddr_t va,
+			ptp_t ** next_ptp, pte_t ** pte, bool alloc);
 
 /*
  * Layout:
@@ -51,7 +58,42 @@ unsigned long get_ttbr1(void)
 void map_kernel_space(vaddr_t va, paddr_t pa, size_t len)
 {
 	// <lab2>
+	// get pgtbl
+	vaddr_t *pgtbl = (vaddr_t *)(phys_to_virt((paddr_t)get_ttbr1()));
+	u64 block_size = L2_PER_ENTRY_PAGES * PAGE_SIZE;
+	size_t a_len = ROUND_UP(len, block_size);
+	size_t block_num = a_len / block_size;
+	for(int i=0; i<block_num; i++){
+		u32 level = 0;
+		pte_t *entry;
+		ptp_t *cur_ptp = (ptp_t *)(pgtbl);
+		ptp_t * next_ptp; 
+		bool alloc = true;
+		int ret;
+		for(; level<2; level++){
+			ret = get_next_ptp(cur_ptp, level, (va + i * block_size), &next_ptp, &entry, alloc);
+			if(ret < 0){
+				return;
+			}
+			if(ret == 1){
+				return;
+			}
+			cur_ptp = next_ptp;
+		}
+		// level 2
+		u32 index = 0;
+		index = GET_L2_INDEX((va + i * block_size));
+		entry = &(cur_ptp->ent[index]);
 
+		entry->pte = 0;
+		entry->l2_block.is_valid = 1;
+		entry->l2_block.is_table = 0;
+		entry->l2_block.attr_index = 4;
+		entry->l2_block.SH = 3;
+		entry->l2_block.AF = 1;
+		entry->l2_block.UXN = 1;
+		entry->l2_block.pfn = (pa + i * block_size) >> (PAGE_SHIFT+9);
+	}
 	// </lab2>
 }
 
