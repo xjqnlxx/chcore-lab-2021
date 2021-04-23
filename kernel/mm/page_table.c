@@ -25,6 +25,8 @@
 
 #include "page_table.h"
 
+// #include <stdio.h>
+
 /* Page_table.c: Use simple impl for debugging now. */
 
 extern void set_ttbr0_el1(paddr_t);
@@ -61,7 +63,7 @@ static int set_pte_flags(pte_t * entry, vmr_prop_t flags, int kind)
 	entry->l3_page.SH = INNER_SHAREABLE;
 	// memory type
 	entry->l3_page.attr_index = NORMAL_MEMORY;
-
+	
 	return 0;
 }
 
@@ -84,7 +86,7 @@ static int set_pte_flags(pte_t * entry, vmr_prop_t flags, int kind)
  * alloc: if true, allocate a ptp when missing
  *
  */
-static int get_next_ptp(ptp_t * cur_ptp, u32 level, vaddr_t va,
+int get_next_ptp(ptp_t * cur_ptp, u32 level, vaddr_t va,
 			ptp_t ** next_ptp, pte_t ** pte, bool alloc)
 {
 	u32 index = 0;
@@ -162,7 +164,55 @@ static int get_next_ptp(ptp_t * cur_ptp, u32 level, vaddr_t va,
 int query_in_pgtbl(vaddr_t * pgtbl, vaddr_t va, paddr_t * pa, pte_t ** entry)
 {
 	// <lab2>
+	// check NULL
+	if(pgtbl == NULL) return -1;
 
+	// kinfo("query in pgtbl start.\n");
+
+	ptp_t *cur_ptp = (ptp_t *)(pgtbl);
+	vaddr_t arg_va = va;
+	ptp_t * next_ptp; 
+	bool alloc = false;
+	int ret;
+	
+	for(u32 level=0; level<4; level++){
+		ret = get_next_ptp(cur_ptp, level, arg_va, &next_ptp, entry, alloc);
+		if(ret < 0){
+			return ret;
+		}
+		// level 0 don't have block pte
+		if(level == 0 && ret == BLOCK_PTP){
+			return -1;
+		}
+		if(ret == BLOCK_PTP){
+			u64 offset;
+			u64 pfn;
+			switch(level){
+				case 1:
+					offset = GET_VA_OFFSET_L1(va);
+					pfn = (u64)((*entry)->l1_block.pfn) << L1_INDEX_SHIFT;
+					break;
+				case 2:
+					offset = GET_VA_OFFSET_L2(va);
+					pfn = (u64)((*entry)->l2_block.pfn) << L2_INDEX_SHIFT;
+					break;
+				case 3:
+					offset = GET_VA_OFFSET_L3(va);
+					pfn = (u64)((*entry)->l3_page.pfn) << L3_INDEX_SHIFT;
+					break;
+				default:
+					return -1;
+			}
+			*pa = (paddr_t)(pfn + offset);
+			return 0;
+		}
+		if(ret == NORMAL_PTP){
+			if(level == 3){
+				return -1;
+			}
+			cur_ptp = next_ptp;
+		}
+	}
 	// </lab2>
 	return 0;
 }
@@ -186,7 +236,44 @@ int map_range_in_pgtbl(vaddr_t * pgtbl, vaddr_t va, paddr_t pa,
 		       size_t len, vmr_prop_t flags)
 {
 	// <lab2>
+	size_t actual_len = ROUND_UP(len, PAGE_SIZE);
+	int n_page_entry = actual_len/PAGE_SIZE;
 
+	// check NULL
+	if(pgtbl == NULL) return -1;
+
+	// start map
+	for(int i=0; i<n_page_entry; i++){
+		u32 level = 0;
+		pte_t *entry;
+		ptp_t *cur_ptp = (ptp_t *)(pgtbl);
+		ptp_t * next_ptp; 
+		bool alloc = true;
+		int ret;
+		for(; level<3; level++){
+			ret = get_next_ptp(cur_ptp, level, (va + i * PAGE_SIZE), &next_ptp, &entry, alloc);
+			if(ret < 0){
+				return ret;
+			}
+			if(ret == BLOCK_PTP){
+				return -1;
+			}
+			cur_ptp = next_ptp;
+		}
+		// level 3
+		u32 index = 0;
+		index = GET_L3_INDEX((va + i * PAGE_SIZE));
+		entry = &(cur_ptp->ent[index]);
+
+		entry->pte = 0;
+		entry->l3_page.is_valid = 1;
+		entry->l3_page.is_page = 0;
+		entry->l3_page.pfn = (pa + i * PAGE_SIZE) >> PAGE_SHIFT;
+
+		set_pte_flags(entry, flags, flags & KERNEL_PT ? KERNEL_PTE : USER_PTE);
+	}
+	// change page table flush TLB
+	flush_tlb();
 	// </lab2>
 	return 0;
 }
@@ -207,7 +294,51 @@ int map_range_in_pgtbl(vaddr_t * pgtbl, vaddr_t va, paddr_t pa,
 int unmap_range_in_pgtbl(vaddr_t * pgtbl, vaddr_t va, size_t len)
 {
 	// <lab2>
+	int n_page_entry = len/PAGE_SIZE;
 
+	// check NULL
+	if(pgtbl == NULL) return -1;
+
+	// start unmap
+	for(int i=0; i<n_page_entry; i++){
+		u32 level = 0;
+		pte_t *entry;
+		ptp_t *cur_ptp = (ptp_t *)(pgtbl);
+		ptp_t * next_ptp; 
+		bool alloc = false;
+		int ret;
+		for(; level<4; level++){
+			ret = get_next_ptp(cur_ptp, level, (va + i * PAGE_SIZE), &next_ptp, &entry, alloc);
+			if(ret < 0){
+				return ret;
+			}
+			if(ret == BLOCK_PTP){
+				// wrong
+				if(level == 0){
+					return -1;
+				}
+				switch (level){
+					case 1:
+						i = i + L1_PER_ENTRY_PAGES - 1;
+						entry->l1_block.is_valid = 0;
+						break;
+					case 2:
+						i = i + L2_PER_ENTRY_PAGES - 1;
+						entry->l2_block.is_valid = 0;
+						break;
+					case 3:
+						i = i + L3_PER_ENTRY_PAGES - 1;
+						entry->l3_page.is_valid = 0;
+						break;
+					default:
+						return -1;
+				}
+			}
+			cur_ptp = next_ptp;
+		}
+	}
+	// change page table flush TLB
+	flush_tlb();
 	// </lab2>
 	return 0;
 }
