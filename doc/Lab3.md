@@ -6,7 +6,7 @@
 
 `process_create_root`先读bin文件，之后创建一个新的进程，之后调用`thread_creat_main`创建线程；`thread_creat_main`创建一个进程中的第一个线程，先初始化栈之后加载elf文件内容，准备环境之后调用`thread_init`初始化线程，flush`idcache`之后返回；之后把当前线程变为`root_thread`
 
-![](/Users/mac/Desktop/call_graph.png)
+![](./call_graph.png)
 
 ## 练习4
 
