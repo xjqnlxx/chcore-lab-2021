@@ -60,7 +60,6 @@ const void *syscall_table[NR_SYSCALL] = {
 	[SYS_map_pmo] = sys_map_pmo,
 	[SYS_handle_brk] = sys_handle_brk,
 	/* lab3 syscalls finished */
-<<<<<<< HEAD
 
 	[SYS_getc] = sys_getc,
 	[SYS_yield] = sys_yield,
@@ -91,7 +90,5 @@ const void *syscall_table[NR_SYSCALL] = {
 	/* TMP FS */
 	[SYS_fs_load_cpio] = sys_fs_load_cpio,
 
-=======
->>>>>>> lab3
 	[SYS_debug] = sys_debug
 };
