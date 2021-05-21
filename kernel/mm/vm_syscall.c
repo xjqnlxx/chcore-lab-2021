@@ -347,11 +347,44 @@ u64 sys_handle_brk(u64 addr)
 	 * top.
 	 *
 	 */
-
+	if(addr == 0){
+		// initialize the heap
+		pmo = obj_alloc(TYPE_PMO, sizeof(*pmo));
+		if (!pmo) {
+			retval = vmspace->user_current_heap;
+			goto out_vmspace;
+		}
+		pmo_init(pmo, PMO_ANONYM, 0, 0);
+		vmspace->heap_vmr = init_heap_vmr(vmspace, vmspace->user_current_heap, pmo);
+		retval = vmspace->user_current_heap;
+		goto out_vmspace;
+	}
+	else
+	{
+		if(addr > vmspace->user_current_heap){
+			vmspace->heap_vmr->size = vmspace->heap_vmr->size + addr - vmspace->user_current_heap;
+			vmspace->heap_vmr->pmo->size = vmspace->heap_vmr->pmo->size + addr - vmspace->user_current_heap;
+			retval = addr;
+			goto out_vmspace;
+		}
+		else
+		{
+			if(addr < vmspace->user_current_heap){
+				retval = -EINVAL;
+				goto out_vmspace;
+			}
+			else
+			{
+				retval = vmspace->user_current_heap;
+				goto out_vmspace;
+			}
+		}
+	}
 	/*
 	 * return origin heap addr on failure;
 	 * return new heap addr on success.
 	 */
+out_vmspace:
 	obj_put(vmspace);
 	return retval;
 }
