@@ -129,7 +129,6 @@ u64 switch_context(void)
 	 * Return the correct value in order to make eret_to_thread work correctly
 	 * in main.c
 	 */
-	kinfo("SWITCH CONTEXT before return\n");
 	return (u64)(target_ctx->ec.reg);
 }
 
@@ -141,6 +140,11 @@ u64 switch_context(void)
  */
 void sys_yield(void)
 {
+	if(current_thread !=NULL){
+		current_thread->thread_ctx->sc->budget = 0;
+	}
+	sched();
+	eret_to_thread(switch_context()); //return to user mode
 }
 
 int sched_init(struct sched_ops *sched_ops)

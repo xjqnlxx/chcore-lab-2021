@@ -40,13 +40,18 @@ void handle_irq(int type)
 	 *	The irq is not from the kernel
 	 * 	The thread being interrupted is an idle thread.
 	 */
-
+	if(type == IRQ_EL0_64 || type == IRQ_EL0_32 || current_thread->thread_ctx->type == TYPE_IDLE){ //see thread.h and sched.h
+		lock_kernel();
+	}
 	plat_handle_irq();
 
 	/**
 	 * Lab4
 	 * Do you miss something?
 	 */
+	sched_handle_timer_irq();
+	sched();
+	eret_to_thread(switch_context());
 }
 
 void plat_handle_irq(void)
