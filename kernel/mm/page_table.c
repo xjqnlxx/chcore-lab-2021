@@ -84,7 +84,7 @@ static int set_pte_flags(pte_t * entry, vmr_prop_t flags, int kind)
  * alloc: if true, allocate a ptp when missing
  *
  */
-static int get_next_ptp(ptp_t * cur_ptp, u32 level, vaddr_t va,
+int get_next_ptp(ptp_t * cur_ptp, u32 level, vaddr_t va,
 			ptp_t ** next_ptp, pte_t ** pte, bool alloc)
 {
 	u32 index = 0;
@@ -161,9 +161,26 @@ static int get_next_ptp(ptp_t * cur_ptp, u32 level, vaddr_t va,
  */
 int query_in_pgtbl(vaddr_t * pgtbl, vaddr_t va, paddr_t * pa, pte_t ** entry)
 {
-	// <lab2>
+	// printk("query_in_pgtbl: pgtbl 0x%x va 0x%x\n", pgtbl, va);
 
-	// </lab2>
+	ptp_t *cur_ptp = (ptp_t *)pgtbl;
+	ptp_t *next_ptp;
+	pte_t *pte;
+	u32 level = 0;
+	int ret;
+
+	while (level < 4 && (ret = get_next_ptp(cur_ptp, level, va, &next_ptp, &pte, 0)) == NORMAL_PTP) {
+		cur_ptp = next_ptp;
+		level++;
+	}
+
+	if (ret < 0) {
+		return ret;
+	}
+
+	*pa = (paddr_t)(pte->l3_page.pfn<<L3_INDEX_SHIFT) + GET_VA_OFFSET_L3(va);
+	*entry = pte;
+
 	return 0;
 }
 
@@ -185,9 +202,41 @@ int query_in_pgtbl(vaddr_t * pgtbl, vaddr_t va, paddr_t * pa, pte_t ** entry)
 int map_range_in_pgtbl(vaddr_t * pgtbl, vaddr_t va, paddr_t pa,
 		       size_t len, vmr_prop_t flags)
 {
-	// <lab2>
+	// printk("map_range_in_pgtbl: va 0x%x pa 0x%x len %u\n", va, pa, len);
 
-	// </lab2>
+	pa=ROUND_DOWN(pa, PAGE_SIZE);
+	va=ROUND_DOWN(va, PAGE_SIZE);
+	len=ROUND_UP(len, PAGE_SIZE);
+
+	while (len > 0)
+	{
+		ptp_t *cur_ptp = (ptp_t *)pgtbl;
+		ptp_t *next_ptp;
+		pte_t *pte;
+		u32 level = 0;
+		int ret;
+
+		while (level < 3 && (ret = get_next_ptp(cur_ptp, level, va, &next_ptp, &pte, 1)) == NORMAL_PTP) {
+			cur_ptp = next_ptp;
+			level++;
+		}
+
+		if (ret < 0) {
+			return ret;
+		}
+
+		pte = &(cur_ptp->ent[GET_L3_INDEX(va)]);
+		pte->pte = 0;
+		pte->l3_page.is_valid = 1;
+		pte->l3_page.is_page = 1;
+		pte->l3_page.pfn = pa >> PAGE_SHIFT;
+		set_pte_flags(pte, flags, (flags & KERNEL_PT) ? KERNEL_PTE : USER_PTE);
+		len -= PAGE_SIZE;
+		va += PAGE_SIZE;
+		pa += PAGE_SIZE;
+	}
+	
+	flush_tlb();
 	return 0;
 }
 
@@ -206,9 +255,34 @@ int map_range_in_pgtbl(vaddr_t * pgtbl, vaddr_t va, paddr_t pa,
  */
 int unmap_range_in_pgtbl(vaddr_t * pgtbl, vaddr_t va, size_t len)
 {
-	// <lab2>
+	// printk("unmap_range_in_pgtbl: va 0x%x len %u\n", va, len);
 
-	// </lab2>
+	va = ROUND_DOWN(va, PAGE_SIZE);
+	len = ROUND_UP(len, PAGE_SIZE);
+
+	while (len > 0)
+	{
+		ptp_t *cur_ptp = (ptp_t *)pgtbl;
+		ptp_t *next_ptp;
+		pte_t *pte;
+		u32 level = 0;
+		int ret;
+
+		while (level < 4 && (ret = get_next_ptp(cur_ptp, level, va, &next_ptp, &pte, 0)) == NORMAL_PTP) {
+			cur_ptp = next_ptp;
+			level++;
+		}
+
+		if (ret < 0) {
+			return ret;
+		}
+
+		pte->l3_page.is_valid = 0;
+		len -= PAGE_SIZE;
+		va += PAGE_SIZE;
+	}
+
+	flush_tlb();
 	return 0;
 }
 

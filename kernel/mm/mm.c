@@ -16,6 +16,7 @@
 
 #include "buddy.h"
 #include "slab.h"
+#include "page_table.h"
 
 extern unsigned long *img_end;
 
@@ -41,6 +42,8 @@ unsigned long get_ttbr1(void)
 	return pgd;
 }
 
+extern int get_next_ptp(ptp_t * cur_ptp, u32 level, vaddr_t va, ptp_t ** next_ptp, pte_t ** pte, bool alloc);
+
 /*
  * map_kernel_space: map the kernel virtual address
  * [va:va+size] to physical addres [pa:pa+size].
@@ -50,9 +53,38 @@ unsigned long get_ttbr1(void)
  */
 void map_kernel_space(vaddr_t va, paddr_t pa, size_t len)
 {
-	// <lab2>
+	// kinfo("map_kernel_space: va 0x%x pa 0x%x len %u\n", va, pa, len);
+	ptp_t *pgd = (ptp_t *)phys_to_virt(get_ttbr1());
+	while (len > 0)
+	{
+		ptp_t *cur_ptp = pgd;
+		ptp_t *next_ptp;
+		pte_t *pte;
+		u32 level = 0;
+		int ret;
 
-	// </lab2>
+		while (level < 3 && (ret = get_next_ptp(cur_ptp, level, va, &next_ptp, &pte, 1)) == 0) {
+			cur_ptp = next_ptp;
+			level++;
+		}
+
+		if (level < 2) {
+			return;
+		}
+
+		pte->l2_block.is_valid = 1;
+		pte->l2_block.is_table = 0;
+		pte->l2_block.attr_index = 4;
+		pte->l2_block.UXN = 1;
+		pte->l2_block.AF = 1;
+		pte->l2_block.SH = 3;
+		pte->l2_block.pfn = pa >> L2_INDEX_SHIFT;
+		// kinfo("map_entry: va 0x%x pte 0x%x\n", va, pte->pte);
+
+		len -= 1UL << 21;
+		va += 1UL << 21;
+		pa += 1UL << 21;
+	}
 }
 
 void kernel_space_check(void)
