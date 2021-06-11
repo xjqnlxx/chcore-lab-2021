@@ -17,17 +17,10 @@ static int tmpfs_scan_pmo_cap;
 
 /* fs_server_cap in current process; can be copied to others */
 int fs_server_cap;
+static char *ls_buf;
+static int scan_ret;
 
 #define BUFLEN	4096
-
-static int do_complement(char *buf, char *complement, int complement_time)
-{
-	int r = -1;
-	// TODO: your code here
-
-	return r;
-
-}
 
 extern char getch();
 
@@ -42,7 +35,7 @@ char *readline(const char *prompt)
 	signed char c = 0;
 	int ret = 0;
 	char complement[BUFLEN];
-	int complement_time = 0;
+	int complement_time = -1;
 
 	if (prompt != NULL) {
 		printf("%s", prompt);
@@ -52,8 +45,37 @@ char *readline(const char *prompt)
 		c = getch();
 		if (c < 0)
 			return NULL;
-		// TODO: your code here
-
+		if(c == '\n'){
+			if(complement_time != -1)
+				printf(".*%s", complement);
+			usys_putc(c);
+			strcpy(buf+ret, complement);
+			buf[ret++] = '\0';
+			return buf;
+		}
+		if(c == '\t'){
+			fs_scan("");
+			if(ls_buf){
+				void *vp;
+				struct dirent *p;
+				vp = ls_buf;
+				char str[256];
+				for (int i = 0; i < scan_ret; i++) {
+					p = vp;
+					strcpy(str, p->d_name);
+					if(strncmp(buf, str, ret) == 0 && i>complement_time){
+						strcpy(complement, str+ret);
+						complement_time = i;
+						break;
+					}
+					else
+						vp += p->d_reclen;
+				}		
+			}
+			continue;
+		}
+		buf[ret++] = c;	
+		usys_putc(c);
 	}
 	return buf;
 }
@@ -74,12 +96,27 @@ int do_cd(char *cmdline)
 int do_top()
 {
 	// TODO: your code here
+	usys_top();
 	return 0;
 }
 
 void fs_scan(char *path)
 {
-	// TODO: your code here
+	int count = 4096/2;
+	char str[256];
+	int start = 0;
+	struct fs_request fr;
+	fr.req = FS_REQ_SCAN;
+	fr.buff = NULL;
+	strcpy(fr.path+1, path);
+	fr.path[0]='/';
+	fr.offset = start;
+	fr.count = count;
+
+	ipc_msg_t *ipc_msg = ipc_create_msg(tmpfs_ipc_struct, sizeof(fr)+count, 1);
+	ipc_set_msg_data(ipc_msg, (void *)&fr, 0, sizeof(fr));
+	scan_ret = ipc_call(tmpfs_ipc_struct, ipc_msg);
+	ls_buf = (void *)ipc_msg + sizeof(*ipc_msg) + sizeof(fr);
 }
 
 int do_ls(char *cmdline)
@@ -92,6 +129,18 @@ int do_ls(char *cmdline)
 		cmdline++;
 	strcat(pathbuf, cmdline);
 	fs_scan(pathbuf);
+	
+	void *vp;
+	struct dirent *p;
+	char str[64];
+	vp = ls_buf;
+	for (int i = 0; i < scan_ret; i++) {
+		p = vp;
+		strcpy(str, p->d_name);
+		printf("%s\n", str);
+		//printf("[fs_scan]d_reclen:%d\n", p->d_reclen);
+		vp += p->d_reclen;
+	}
 	return 0;
 }
 
@@ -114,7 +163,7 @@ int do_echo(char *cmdline)
 	cmdline += 4;
 	while (*cmdline == ' ')
 		cmdline++;
-	printf("%s", cmdline);
+	printf("%s\n", cmdline);
 	return 0;
 }
 

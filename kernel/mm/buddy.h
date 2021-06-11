@@ -9,7 +9,7 @@
  * 2^(BUDDY_MAX_ORDER - 1) * 4K, i.e., 16M.
  */
 #define BUDDY_PAGE_SIZE     (0x1000)
-#define BUDDY_MAX_ORDER     (14UL)
+#define BUDDY_MAX_ORDER     (15UL)
 
 /* `struct page` is the metadata of one physical 4k page. */
 struct page {

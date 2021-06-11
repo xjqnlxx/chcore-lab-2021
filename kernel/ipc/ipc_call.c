@@ -121,6 +121,8 @@ static u64 thread_migrate_to_server(struct ipc_connection *conn, u64 arg)
 	 * of the ipc_connection stores the instruction to be called when switch
 	 * to the server?
 	 * */
+	//arch_set_thread_next_ip(target, conn->callback);
+	//kinfo("eret to server: callback: %p\n", conn->target->server_ipc_config->callback);	
 	arch_set_thread_next_ip(target, conn->target->server_ipc_config->callback);
 	/**
 	 * Lab4
@@ -166,16 +168,13 @@ u64 sys_ipc_call(u32 conn_cap, ipc_msg_t * ipc_msg)
 
 	/**
 	 * Lab4
-	 * Here, you need to transfer all the capbiliies of client thread to
+	 * Here, you need to transfer all the capbilities of client thread to
 	 * capbilities in server thread in the ipc_msg.
 	 */
+	ipc_send_cap(conn, ipc_msg);
 
 	r = copy_to_user((char *)&ipc_msg->server_conn_cap,
 			 (char *)&conn->server_conn_cap, sizeof(u64));
-	if (r < 0)
-		goto out_obj_put;
-
-	r = ipc_send_cap(conn, ipc_msg);
 	if (r < 0)
 		goto out_obj_put;
 
@@ -184,6 +183,7 @@ u64 sys_ipc_call(u32 conn_cap, ipc_msg_t * ipc_msg)
 	 * The arg is actually the 64-bit arg for ipc_dispatcher
 	 * Then what value should the arg be?
 	 * */
+	//arg = LAB4_IPC_BLANK;
 	arg = conn->buf.server_user_addr;
 	thread_migrate_to_server(conn, arg);
 
@@ -200,18 +200,18 @@ u64 sys_ipc_call(u32 conn_cap, ipc_msg_t * ipc_msg)
  * */
 u64 sys_ipc_reg_call(u32 conn_cap, u64 arg0)
 {
-	struct ipc_connection *conn = NULL;
-	int r;
+        struct ipc_connection *conn = NULL;
+        int r;
 
-	conn = obj_get(current_thread->process, conn_cap, TYPE_CONNECTION);
-	if (!conn) {
-		r = -ECAPBILITY;
-		return r;
-	}
+        conn = obj_get(current_thread->process, conn_cap, TYPE_CONNECTION);
+        if (!conn) {
+                r = -ECAPBILITY;
+                goto out_fail;
+        }
+	kinfo("arg0:%d\n",arg0);
+        thread_migrate_to_server(conn, arg0);
 
-	thread_migrate_to_server(conn, arg0);
-
-	BUG("wrong\n");
-	obj_put(conn);	
-	return r;
+        BUG("This function should never\n");
+ out_fail:
+        return r;
 }
