@@ -24,6 +24,33 @@ static int scan_ret;
 
 extern char getch();
 
+int do_complement(char *buf, char *complement, int complement_time, int ret)
+{
+	int r = -1;
+	// TODO: your code here
+	fs_scan("");
+		if(ls_buf){
+			void *vp;
+			struct dirent *p;
+			int match_time = 0;
+			vp = ls_buf;
+			char str[256];
+			for (int i = 0; i < scan_ret; i++) {
+				p = vp;
+				strcpy(str, p->d_name);
+				if(strncmp(buf, str, ret) == 0){
+					match_time++;
+					if(match_time > complement_time){
+						strcpy(complement, str+ret);
+						return 0;
+					}
+				}
+				vp += p->d_reclen;
+			}		
+		}
+	return r;
+}
+
 // read a command from stdin leading by `prompt`
 // put the commond in `buf` and return `buf`
 // What you typed should be displayed on the screen
@@ -35,7 +62,7 @@ char *readline(const char *prompt)
 	signed char c = 0;
 	int ret = 0;
 	char complement[BUFLEN];
-	int complement_time = -1;
+	int complement_time = 0;
 
 	if (prompt != NULL) {
 		printf("%s", prompt);
@@ -46,7 +73,7 @@ char *readline(const char *prompt)
 		if (c < 0)
 			return NULL;
 		if(c == '\n'){
-			if(complement_time != -1)
+			if(complement_time > 0)
 				printf(".*%s", complement);
 			usys_putc(c);
 			strcpy(buf+ret, complement);
@@ -54,23 +81,9 @@ char *readline(const char *prompt)
 			return buf;
 		}
 		if(c == '\t'){
-			fs_scan("");
-			if(ls_buf){
-				void *vp;
-				struct dirent *p;
-				vp = ls_buf;
-				char str[256];
-				for (int i = 0; i < scan_ret; i++) {
-					p = vp;
-					strcpy(str, p->d_name);
-					if(strncmp(buf, str, ret) == 0 && i>complement_time){
-						strcpy(complement, str+ret);
-						complement_time = i;
-						break;
-					}
-					else
-						vp += p->d_reclen;
-				}		
+			int r =do_complement(buf, complement, complement_time, ret);
+			if(r == 0){
+				complement_time++;
 			}
 			continue;
 		}
