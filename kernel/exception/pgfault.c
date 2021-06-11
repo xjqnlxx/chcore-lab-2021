@@ -96,10 +96,10 @@ int handle_trans_fault(struct vmspace *vmspace, vaddr_t fault_addr)
 		return -ENOMAPPING;
 	}
 	// map physical address
-	pa = (paddr_t) virt_to_phys(kmalloc(pmo->size));
-	pmo->start = pa;
-
-	if(map_range_in_pgtbl(vmspace->pgtbl, vmr->start, pa, pmo->size, vmr->perm) < 0){
+	pa =  virt_to_phys(get_pages(0));
+	commit_page_to_pmo(pmo, (u64)pa, pa);
+	fault_addr = ROUND_DOWN(fault_addr, PAGE_SIZE);
+	if (map_range_in_pgtbl(vmspace->pgtbl, fault_addr, pa, PAGE_SIZE, vmr->perm)) {
 		return -ENOMAPPING;
 	}
 	return 0;
